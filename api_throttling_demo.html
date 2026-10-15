@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloud API Throttling Lab</title>
+<style>
+:root { color-scheme: light dark; --bg: light-dark(#f4f6fb,#101522); --panel: light-dark(#ffffff,#191f2e); --text: light-dark(#172033,#edf2ff); --muted: light-dark(#667085,#a7b0c4); --border: light-dark(#dfe5ef,#30394d); --accent: light-dark(#5b5ce2,#a3a4ff); --good: light-dark(#137a50,#5cdaa3); --bad: light-dark(#b42318,#ff938b); --soft: light-dark(#eef0ff,#292b4b); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#app { min-height: 100vh; width: 100%; background: var(--bg); border-radius: 0; padding: 28px; }
+main { max-width: 1100px; margin: 0 auto; }
+header { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; margin-bottom:24px; }
+.eyebrow { color:var(--accent); text-transform:uppercase; letter-spacing:.13em; font-size:11px; font-weight:800; }
+h1 { font-size: clamp(27px,4vw,38px); line-height:1.12; margin:8px 0; letter-spacing:-.04em; }
+.subtitle { color:var(--muted); max-width:650px; line-height:1.55; margin:0; }
+.pill { white-space:nowrap; border:1px solid var(--border); background:var(--panel); border-radius:999px; padding:8px 12px; font-size:12px; color:var(--muted); }
+.notice { background:var(--soft); border:1px solid var(--border); border-radius:14px; padding:13px 15px; margin-bottom:20px; font-size:13px; line-height:1.5; }
+.grid { display:grid; grid-template-columns: minmax(0,1.2fr) minmax(280px,.8fr); gap:18px; }
+.panel { background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:20px; min-width:0; }
+h2 { margin:0 0 5px; font-size:17px; letter-spacing:-.02em; }
+.help { color:var(--muted); font-size:13px; line-height:1.5; margin:0 0 18px; }
+.flow { display:flex; align-items:center; gap:8px; margin:14px 0 20px; }
+.flow-node { flex:1; text-align:center; border:1px solid var(--border); border-radius:12px; padding:13px 8px; font-size:12px; font-weight:700; background:var(--bg); }
+.arrow { color:var(--muted); font-size:17px; }
+.metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0 20px; }
+.metric { background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:13px; }
+.metric-label { color:var(--muted); font-size:11px; }
+.metric-value { font-size:25px; font-weight:800; margin-top:5px; letter-spacing:-.04em; }
+.actions { display:flex; flex-wrap:wrap; gap:9px; }
+button { border:1px solid var(--border); border-radius:10px; padding:10px 13px; font:inherit; font-size:13px; font-weight:700; cursor:pointer; background:var(--panel); color:var(--text); }
+button.primary { background:var(--accent); color:white; border-color:transparent; }
+button:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.settings { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+label { display:block; color:var(--muted); font-size:12px; }
+input { margin-top:6px; width:100%; border:1px solid var(--border); border-radius:9px; padding:10px; background:var(--bg); color:var(--text); font:inherit; }
+.status { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); margin-top:14px; }
+.dot { width:8px; height:8px; background:var(--good); border-radius:50%; }
+.table-wrap { overflow:auto; max-height:320px; border:1px solid var(--border); border-radius:12px; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th,td { text-align:left; padding:10px 11px; border-bottom:1px solid var(--border); white-space:nowrap; }
+th { color:var(--muted); font-weight:700; position:sticky; top:0; background:var(--panel); }
+.code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+.ok { color:var(--good); font-weight:800; }.blocked { color:var(--bad); font-weight:800; }
+.empty { color:var(--muted); text-align:center; padding:24px 12px; font-size:13px; }
+.legend { display:flex; flex-wrap:wrap; gap:12px; color:var(--muted); font-size:11px; margin-top:12px; }
+footer { margin-top:18px; color:var(--muted); font-size:11px; line-height:1.5; }
+@media(max-width:760px) { #app{padding:18px;} header{display:block;} .pill{display:inline-block; margin-top:10px;} .grid{grid-template-columns:1fr;} }
+@media(max-width:430px) { .flow{gap:4px;} .flow-node{padding:10px 4px;font-size:10px;} .metrics{gap:6px;} .metric{padding:10px;} .metric-value{font-size:21px;} .settings{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<div id="app">
+<main>
+<header>
+  <div><div class="eyebrow">Cloud computing · Prototype</div><h1>API Throttling Lab</h1><p class="subtitle">See how a gateway can accept requests within a limit and reject excess traffic with HTTP 429.</p></div>
+  <div class="pill">● Local simulation · No AWS connected</div>
+</header>
+<div class="notice"><strong>Demo disclaimer:</strong> This is a browser-based simulation of gateway throttling. It does not call AWS or a real backend, and its results are not proof of cloud deployment.</div>
+<div class="grid">
+<section class="panel">
+  <h2>Request flow</h2><p class="help">A simplified view of the project architecture.</p>
+  <div class="flow"><div class="flow-node">Client<br><span style="font-weight:400;color:var(--muted)">Browser</span></div><span class="arrow">→</span><div class="flow-node">API Gateway<br><span style="font-weight:400;color:var(--muted)">Rate check</span></div><span class="arrow">→</span><div class="flow-node">Backend<br><span style="font-weight:400;color:var(--muted)">Demo response</span></div></div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Total requests</div><div class="metric-value" id="total">0</div></div>
+    <div class="metric"><div class="metric-label">Accepted · 200</div><div class="metric-value" id="accepted" style="color:var(--good)">0</div></div>
+    <div class="metric"><div class="metric-label">Throttled · 429</div><div class="metric-value" id="throttled" style="color:var(--bad)">0</div></div>
+  </div>
+  <div class="actions"><button class="primary" id="one">Send 1 request</button><button id="burst">Send burst of 15</button><button id="steady">Run 5 steady requests</button><button id="reset">Reset demo</button></div>
+  <div class="status"><span class="dot"></span><span id="statusText">Ready. Send a request to begin.</span></div>
+</section>
+<section class="panel">
+  <h2>Throttle configuration</h2><p class="help">Change the illustrative settings before resetting the test.</p>
+  <div class="settings"><label>Steady rate (requests/sec)<input id="rate" type="number" min="1" max="20" value="2"></label><label>Burst capacity<input id="burstLimit" type="number" min="1" max="30" value="5"></label></div>
+  <button id="apply">Apply settings & reset</button>
+  <div style="height:18px"></div>
+  <h2>Latest response</h2><p class="help">What the simulated gateway returned.</p>
+  <div id="latest" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px;min-height:94px"><div class="code" style="color:var(--muted)">Waiting for a request…</div></div>
+  <div class="legend"><span><strong style="color:var(--good)">200</strong> Accepted</span><span><strong style="color:var(--bad)">429</strong> Rate limit exceeded</span></div>
+</section>
+<section class="panel" style="grid-column:1/-1">
+  <h2>Request log</h2><p class="help">Each row shows the simulated response. In a real cloud setup, gateway logs and backend logs would be checked separately.</p>
+  <div class="table-wrap"><table><thead><tr><th>#</th><th>Time</th><th>Method / Route</th><th>Status</th><th>Result</th></tr></thead><tbody id="rows"><tr><td colspan="5" class="empty">No requests yet. Click “Send 1 request” or “Send burst of 15”.</td></tr></tbody></table></div>
+</section>
+</div>
+<footer>Educational demo only. The token-bucket behavior is approximate and runs entirely in this page. A real AWS prototype requires an API Gateway route, a backend such as Lambda, deployed configuration, and cloud logs. Throttling enforcement on managed gateways may be best-effort.</footer>
+</main>
+</div>
+<script>
+(() => {
+  let rate = 2, capacity = 5, tokens = 5, last = performance.now();
+  let total = 0, accepted = 0, throttled = 0, logs = [];
+  const $ = id => document.getElementById(id);
+  const nowText = () => new Date().toLocaleTimeString();
+  function refresh() {
+    $('total').textContent = total;
+    $('accepted').textContent = accepted;
+    $('throttled').textContent = throttled;
+    $('rows').innerHTML = logs.length ? logs.slice().reverse().map(x => `<tr><td>${x.id}</td><td>${x.time}</td><td class="code">GET /hello</td><td class="${x.status === 200 ? 'ok' : 'blocked'}">${x.status}</td><td>${x.result}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">No requests yet. Click “Send 1 request” or “Send burst of 15”.</td></tr>';
+  }
+  function sendRequest() {
+    const now = performance.now();
+    tokens = Math.min(capacity, tokens + ((now - last) / 1000) * rate);
+    last = now;
+    total++;
+    let status, result, body;
+    if (tokens >= 1) {
+      tokens -= 1; accepted++; status = 200; result = 'Accepted by gateway';
+      body = { message: 'Hello! Request accepted', simulatedBackend: true };
+      $('statusText').textContent = 'Request accepted by the simulator.';
+    } else {
+      throttled++; status = 429; result = 'Blocked by rate limiter';
+      body = { error: 'Too Many Requests', simulatedGateway: true };
+      $('statusText').textContent = 'Rate limit exceeded — request throttled.';
+    }
+    logs.push({ id: total, time: nowText(), status, result });
+    $('latest').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px"><strong class="${status === 200 ? 'ok' : 'blocked'}">HTTP ${status} ${status === 200 ? 'OK' : 'Too Many Requests'}</strong><span class="code" style="color:var(--muted)">GET /hello</span></div><pre class="code" style="white-space:pre-wrap;margin:0">${JSON.stringify(body, null, 2)}</pre>`;
+    refresh();
+  }
+  $('one').addEventListener('click', sendRequest);
+  $('burst').addEventListener('click', () => { for (let i = 0; i < 15; i++) sendRequest(); });
+  $('steady').addEventListener('click', async () => {
+    $('steady').disabled = true;
+    for (let i = 0; i < 5; i++) { sendRequest(); if (i < 4) await new Promise(r => setTimeout(r, 1000)); }
+    $('steady').disabled = false;
+  });
+  function reset() {
+    tokens = capacity; last = performance.now(); total = accepted = throttled = 0; logs = [];
+    $('latest').innerHTML = '<div class="code" style="color:var(--muted)">Waiting for a request…</div>';
+    $('statusText').textContent = 'Ready. Send a request to begin.'; refresh();
+  }
+  $('reset').addEventListener('click', reset);
+  $('apply').addEventListener('click', () => {
+    const r = Number($('rate').value), b = Number($('burstLimit').value);
+    if (!Number.isInteger(r) || r < 1 || r > 20 || !Number.isInteger(b) || b < 1 || b > 30) {
+      $('statusText').textContent = 'Enter a rate from 1–20 and burst from 1–30.'; return;
+    }
+    rate = r; capacity = b; reset(); $('statusText').textContent = `Settings applied: ${rate} requests/sec, burst ${capacity}.`;
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>
